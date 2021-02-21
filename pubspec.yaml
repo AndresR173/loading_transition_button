@@ -1,0 +1,19 @@
+name: loading_transition_button
+description: Animated transition button.
+version: 0.0.1
+homepage: https://github.com/AndresR173/loading_transition_button
+
+environment:
+  sdk: ">=2.7.0 <3.0.0"
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lint: ^1.3.1
+
+flutter:
