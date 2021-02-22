@@ -19,9 +19,6 @@ class LoadingButton extends StatefulWidget {
 
   final Color errorColor;
 
-  /// Icon to display when the FAB is in the default / steady state.
-  final IconData icon;
-
   final VoidCallback onSubmit;
 
   final Widget child;
@@ -31,15 +28,13 @@ class LoadingButton extends StatefulWidget {
     this.color,
     // this.controller,
     this.duration = const Duration(milliseconds: 300),
-    this.icon = Icons.arrow_forward,
     this.onSubmit,
     this.controller,
     this.loadingColor,
     this.child,
-    this.errorColor = Colors.red,
+    this.errorColor,
   })  : assert(duration != null),
         assert(duration.inMilliseconds > 0),
-        assert(icon != null),
         assert(child != null),
         super(key: key);
 
@@ -54,6 +49,8 @@ class _LoadginButtonState extends State<LoadingButton>
   AnimationController _controller;
   Color _buttonColor;
   bool _isLoading = false;
+  bool _isError = false;
+  bool _isReversed = false;
 
   @override
   void initState() {
@@ -75,7 +72,7 @@ class _LoadginButtonState extends State<LoadingButton>
 
     Animation startColor = ColorTween(
       begin: widget.color,
-      end: widget.errorColor,
+      end: widget.errorColor ?? widget.color,
     ).animate(
       CurvedAnimation(
         parent: _controller,
@@ -87,7 +84,7 @@ class _LoadginButtonState extends State<LoadingButton>
     });
 
     Animation endColor = ColorTween(
-      begin: widget.errorColor,
+      begin: widget.errorColor ?? widget.color,
       end: widget.color,
     ).animate(
       CurvedAnimation(
@@ -129,16 +126,31 @@ class _LoadginButtonState extends State<LoadingButton>
     );
   }
 
+  double _getBeginWidth(BoxConstraints constraints) {
+    if (_isReversed) {
+      return constraints.maxHeight;
+    }
+    return constraints.maxWidth;
+  }
+
+  double _getEndWidth(BoxConstraints constraints) {
+    if (_isLoading) {
+      return constraints.maxHeight;
+    }
+    return constraints.maxWidth;
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
       return Center(
-        child: AnimatedContainer(
+        child: TweenAnimationBuilder(
           curve: Curves.fastOutSlowIn,
           duration: widget.duration,
-          width: _isLoading ? constraints.maxHeight : constraints.maxWidth,
-          height: constraints.maxHeight,
+          tween: Tween<double>(
+              begin: _getBeginWidth(constraints),
+              end: _getEndWidth(constraints)),
           child: Transform(
             transform: Matrix4.translation(_getTranslation()),
             child: RawMaterialButton(
@@ -152,6 +164,20 @@ class _LoadginButtonState extends State<LoadingButton>
               child: _getChildWidget(context),
             ),
           ),
+          builder: (BuildContext context, double size, Widget child) {
+            return Container(
+              height: constraints.maxHeight,
+              width: size,
+              child: child,
+            );
+          },
+          onEnd: () {
+            if (_isError) {
+              _controller.reset();
+              _controller.forward();
+              _isError = false;
+            }
+          },
         ),
       );
     });
@@ -164,12 +190,15 @@ class _LoadginButtonState extends State<LoadingButton>
 
   void _stopAnimation() {
     setState(() {
+      _isReversed = true;
       _isLoading = false;
     });
   }
 
   void _iniAnimation() {
     setState(() {
+      _isReversed = false;
+      _isError = false;
       _isLoading = true;
     });
   }
@@ -179,9 +208,8 @@ class LoadingButtonController {
   _LoadginButtonState _state;
 
   void onError() {
+    _state._isError = true;
     _state._stopAnimation();
-    _state._controller.reset();
-    _state._controller.forward();
   }
 
   void startLoadingAnimation() {
