@@ -14,14 +14,13 @@ class LoadingButton extends StatefulWidget {
   /// Duration for the error transition.
   final Duration duration;
 
-  /// Background color of the FAB when in an error state.
-  final Color loadingColor;
-
   final Color errorColor;
 
   final VoidCallback onSubmit;
 
   final Widget child;
+
+  final double minWidth;
 
   LoadingButton({
     Key key,
@@ -30,12 +29,13 @@ class LoadingButton extends StatefulWidget {
     this.duration = const Duration(milliseconds: 300),
     this.onSubmit,
     this.controller,
-    this.loadingColor,
     this.child,
     this.errorColor,
+    this.minWidth,
   })  : assert(duration != null),
         assert(duration.inMilliseconds > 0),
         assert(child != null),
+        assert(minWidth != null),
         super(key: key);
 
   @override
@@ -43,7 +43,7 @@ class LoadingButton extends StatefulWidget {
 }
 
 class _LoadginButtonState extends State<LoadingButton>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, RouteAware {
   final Key _keyLoading = UniqueKey();
 
   AnimationController _controller;
@@ -51,6 +51,12 @@ class _LoadginButtonState extends State<LoadingButton>
   bool _isLoading = false;
   bool _isError = false;
   bool _isReversed = false;
+
+  // Transition
+  GlobalKey _buttonKey = GlobalKey();
+
+  final routeObserver = RouteObserver<PageRoute>();
+  final duration = const Duration(milliseconds: 300);
 
   @override
   void initState() {
@@ -69,6 +75,7 @@ class _LoadginButtonState extends State<LoadingButton>
     super.didChangeDependencies();
 
     _buttonColor = widget.color ?? Theme.of(context).accentColor;
+    routeObserver.subscribe(this, ModalRoute.of(context));
 
     Animation startColor = ColorTween(
       begin: widget.color,
@@ -100,8 +107,14 @@ class _LoadginButtonState extends State<LoadingButton>
   @override
   void dispose() {
     _controller?.dispose();
+    routeObserver.unsubscribe(this);
 
     super.dispose();
+  }
+
+  @override
+  didPopNext() {
+    setState(() => _isLoading = true);
   }
 
   v.Vector3 _getTranslation() {
@@ -128,14 +141,14 @@ class _LoadginButtonState extends State<LoadingButton>
 
   double _getBeginWidth(BoxConstraints constraints) {
     if (_isReversed) {
-      return constraints.maxHeight;
+      return widget.minWidth;
     }
     return constraints.maxWidth;
   }
 
   double _getEndWidth(BoxConstraints constraints) {
     if (_isLoading) {
-      return constraints.maxHeight;
+      return widget.minWidth;
     }
     return constraints.maxWidth;
   }
@@ -154,6 +167,7 @@ class _LoadginButtonState extends State<LoadingButton>
           child: Transform(
             transform: Matrix4.translation(_getTranslation()),
             child: RawMaterialButton(
+              key: _buttonKey,
               onPressed: () => (_isLoading || widget.onSubmit == null)
                   ? null
                   : _submitAndAnimate(),
@@ -202,6 +216,74 @@ class _LoadginButtonState extends State<LoadingButton>
       _isLoading = true;
     });
   }
+
+  Widget _buildTransition(
+    BuildContext context,
+    Widget page,
+    Animation<double> animation,
+    Size buttonSize,
+    Offset fabOffset,
+  ) {
+    if (animation.value == 1) return page;
+
+    final radiusTween = BorderRadiusTween(
+      begin: BorderRadius.circular(buttonSize.width / 2),
+      end: BorderRadius.circular(0),
+    );
+
+    final sizeTween = SizeTween(
+      begin: buttonSize,
+      end: Size(MediaQuery.of(context).size.height,
+          MediaQuery.of(context).size.height),
+    );
+
+    final offsetTween = Tween<Offset>(begin: fabOffset, end: Offset.zero);
+
+    final easeInAnimation = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeIn,
+    );
+
+    final radius = radiusTween.evaluate(easeInAnimation);
+    final offset = offsetTween.evaluate(animation);
+    final size = sizeTween.evaluate(easeInAnimation);
+
+    Widget positionedClippedChild(Widget child) => Positioned(
+          width: size.width,
+          height: size.height,
+          left: offset.dx,
+          top: offset.dy,
+          child: ClipRRect(
+            borderRadius: radius,
+            child: child,
+          ),
+        );
+
+    return Stack(
+      children: [
+        positionedClippedChild(Container(color: widget.color)),
+        // positionedClippedChild(transitionFab),
+      ],
+    );
+  }
+
+  _onMoveToNextPage(BuildContext context, Widget page) {
+    final RenderBox fabRenderBox = _buttonKey.currentContext.findRenderObject();
+    final fabSize = fabRenderBox.size;
+    final fabOffset = fabRenderBox.localToGlobal(Offset.zero);
+
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        transitionDuration: duration,
+        pageBuilder: (BuildContext context, Animation<double> animation,
+                Animation<double> secondaryAnimation) =>
+            page,
+        transitionsBuilder: (BuildContext context, Animation<double> animation,
+                Animation<double> secondaryAnimation, Widget child) =>
+            _buildTransition(context, child, animation, fabSize, fabOffset),
+      ),
+    );
+  }
 }
 
 class LoadingButtonController {
@@ -218,5 +300,9 @@ class LoadingButtonController {
 
   void stopLoadingAnimation() {
     _state._stopAnimation();
+  }
+
+  void moveToScreen({BuildContext context, Widget page}) {
+    _state._onMoveToNextPage(context, page);
   }
 }
