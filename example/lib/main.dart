@@ -28,8 +28,15 @@ class MyApp extends StatelessWidget {
                     color: Colors.blue,
                     onSubmit: () => print('onSubmit'),
                     controller: _controller,
-                    minWidth: 44,
-                    child: Text('Hit me!'),
+                    errorColor: Colors.red,
+                    transitionDuration: Duration(seconds: 1),
+                    child: Text(
+                      'Hit me!',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyText1
+                          .copyWith(color: Colors.white),
+                    ),
                   ),
                 ),
                 SizedBox(height: 100),

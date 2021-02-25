@@ -3,39 +3,47 @@ import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' as v;
 
 class LoadingButton extends StatefulWidget {
-  /// Background color of the FAB for the default / steady state.  If not set
+  /// Background color of the button for the default / steady state.  If not set
   /// this will default to the accent color of the current [Theme].
   final Color color;
 
-  /// Optional controller to be able to listen for error state events as well as
-  /// firing pressed and error events directly.
+  /// Controller to be able to notify when the button can
+  /// move to the next page o should animate to an
+  /// errored state
   final LoadingButtonController controller;
 
-  /// Duration for the error transition.
+  /// Duration for the button animation.
   final Duration duration;
 
+  /// Duration for the page trnasition
+  final Duration transitionDuration;
+
+  /// Background color for error state
+  /// if null, it will use [color] by default
   final Color errorColor;
 
+  /// Use this callback to listen for interactions
+  /// with the loading button
   final VoidCallback onSubmit;
 
+  /// The child widget for the loading button
   final Widget child;
 
-  final double minWidth;
-
+  /// A button that respresents a loading and errored stated
+  /// if given a [LoadingButtonController], this widget can use the [moveToScreen]
+  /// to animate a transition to a new page
   LoadingButton({
     Key key,
     this.color,
-    // this.controller,
     this.duration = const Duration(milliseconds: 300),
+    this.transitionDuration = const Duration(milliseconds: 400),
     this.onSubmit,
     this.controller,
     this.child,
     this.errorColor,
-    this.minWidth,
   })  : assert(duration != null),
         assert(duration.inMilliseconds > 0),
         assert(child != null),
-        assert(minWidth != null),
         super(key: key);
 
   @override
@@ -44,19 +52,19 @@ class LoadingButton extends StatefulWidget {
 
 class _LoadginButtonState extends State<LoadingButton>
     with TickerProviderStateMixin, RouteAware {
-  final Key _keyLoading = UniqueKey();
-
   AnimationController _controller;
+
+  /// if null, it will use the accent color by default
   Color _buttonColor;
   bool _isLoading = false;
   bool _isError = false;
   bool _isReversed = false;
+  double _parentHeight = 0;
 
   // Transition
   GlobalKey _buttonKey = GlobalKey();
 
   final routeObserver = RouteObserver<PageRoute>();
-  final duration = const Duration(milliseconds: 300);
 
   @override
   void initState() {
@@ -68,6 +76,11 @@ class _LoadginButtonState extends State<LoadingButton>
       vsync: this,
       duration: widget.duration,
     )..addListener(() => setState(() {}));
+  }
+
+  @override
+  didPopNext() {
+    setState(() => _isLoading = false);
   }
 
   @override
@@ -112,11 +125,7 @@ class _LoadginButtonState extends State<LoadingButton>
     super.dispose();
   }
 
-  @override
-  didPopNext() {
-    setState(() => _isLoading = true);
-  }
-
+  // Shake animation
   v.Vector3 _getTranslation() {
     var progress = _controller?.value ?? 0;
     var offset = sin(progress * pi * 5);
@@ -131,7 +140,6 @@ class _LoadginButtonState extends State<LoadingButton>
       duration: widget.duration,
       child: _isLoading
           ? CircularProgressIndicator(
-              key: _keyLoading,
               strokeWidth: 2.0,
               valueColor: AlwaysStoppedAnimation(Colors.white),
             )
@@ -141,14 +149,14 @@ class _LoadginButtonState extends State<LoadingButton>
 
   double _getBeginWidth(BoxConstraints constraints) {
     if (_isReversed) {
-      return widget.minWidth;
+      return _parentHeight;
     }
     return constraints.maxWidth;
   }
 
   double _getEndWidth(BoxConstraints constraints) {
     if (_isLoading) {
-      return widget.minWidth;
+      return _parentHeight;
     }
     return constraints.maxWidth;
   }
@@ -157,6 +165,7 @@ class _LoadginButtonState extends State<LoadingButton>
   Widget build(BuildContext context) {
     return LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
+      _parentHeight = constraints.maxHeight;
       return Center(
         child: TweenAnimationBuilder(
           curve: Curves.fastOutSlowIn,
@@ -197,6 +206,7 @@ class _LoadginButtonState extends State<LoadingButton>
     });
   }
 
+  /// Calls [onSubmit] callback and inits the animation
   void _submitAndAnimate() {
     widget.onSubmit();
     _iniAnimation();
@@ -226,22 +236,28 @@ class _LoadginButtonState extends State<LoadingButton>
   ) {
     if (animation.value == 1) return page;
 
+    final rect = Rect.fromCenter(
+        center: fabOffset, width: buttonSize.width, height: buttonSize.height);
+    final finalRect = rect.inflate(MediaQuery.of(context).size.longestSide);
+
     final radiusTween = BorderRadiusTween(
-      begin: BorderRadius.circular(buttonSize.width / 2),
-      end: BorderRadius.circular(0),
+      begin: BorderRadius.circular(buttonSize.height / 2),
+      end: BorderRadius.circular(finalRect.size.height / 2),
     );
 
     final sizeTween = SizeTween(
       begin: buttonSize,
-      end: Size(MediaQuery.of(context).size.height,
-          MediaQuery.of(context).size.height),
+      end: finalRect.size,
     );
 
-    final offsetTween = Tween<Offset>(begin: fabOffset, end: Offset.zero);
+    final offsetTween = Tween<Offset>(
+        begin: fabOffset,
+        end: Offset(MediaQuery.of(context).size.width - finalRect.right,
+            MediaQuery.of(context).size.height - finalRect.bottom));
 
     final easeInAnimation = CurvedAnimation(
       parent: animation,
-      curve: Curves.easeIn,
+      curve: Curves.linear,
     );
 
     final radius = radiusTween.evaluate(easeInAnimation);
@@ -261,48 +277,58 @@ class _LoadginButtonState extends State<LoadingButton>
 
     return Stack(
       children: [
-        positionedClippedChild(Container(color: widget.color)),
-        // positionedClippedChild(transitionFab),
+        positionedClippedChild(Container(color: _buttonColor)),
       ],
     );
   }
 
-  _onMoveToNextPage(BuildContext context, Widget page) {
-    final RenderBox fabRenderBox = _buttonKey.currentContext.findRenderObject();
-    final fabSize = fabRenderBox.size;
-    final fabOffset = fabRenderBox.localToGlobal(Offset.zero);
+  _moveToNextPage(BuildContext context, Widget page) {
+    final RenderBox buttonRenderBox =
+        _buttonKey.currentContext.findRenderObject();
+    final buttonSize = buttonRenderBox.size;
+    final buttonOffset = buttonRenderBox.localToGlobal(Offset.zero);
 
     Navigator.of(context).push(
       PageRouteBuilder(
-        transitionDuration: duration,
+        transitionDuration: widget.transitionDuration,
         pageBuilder: (BuildContext context, Animation<double> animation,
                 Animation<double> secondaryAnimation) =>
             page,
         transitionsBuilder: (BuildContext context, Animation<double> animation,
                 Animation<double> secondaryAnimation, Widget child) =>
-            _buildTransition(context, child, animation, fabSize, fabOffset),
+            _buildTransition(
+                context, child, animation, buttonSize, buttonOffset),
       ),
     );
   }
 }
 
+/// This controller defines a set of helper methods
+/// that notifies the loading button about the state of the
+/// animation
 class LoadingButtonController {
   _LoadginButtonState _state;
 
+  /// Stops the loading animation and init the error state
   void onError() {
     _state._isError = true;
     _state._stopAnimation();
   }
 
+  /// Inits the loading state and fires [onSubmit] callback
+  /// When the loading animation is running, the button will
+  /// be disabled
   void startLoadingAnimation() {
     _state._iniAnimation();
   }
 
+  /// Stops loading animations
   void stopLoadingAnimation() {
     _state._stopAnimation();
   }
 
-  void moveToScreen({BuildContext context, Widget page}) {
-    _state._onMoveToNextPage(context, page);
+  /// Inits the transition to the next page
+  void moveToScreen({@required BuildContext context, @required Widget page}) {
+    _state._moveToNextPage(context, page);
   }
 }
