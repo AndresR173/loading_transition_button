@@ -5,7 +5,7 @@ import 'package:vector_math/vector_math_64.dart' as v;
 class LoadingButton extends StatefulWidget {
   /// Background color of the button for the default / steady state.  If not set
   /// this will default to the accent color of the current [Theme].
-  final Color color;
+  final Color? color;
 
   /// Controller to be able to notify when the button can
   /// move to the next page o should animate to an
@@ -20,11 +20,11 @@ class LoadingButton extends StatefulWidget {
 
   /// Background color for error state
   /// if null, it will use [color] by default
-  final Color errorColor;
+  final Color? errorColor;
 
   /// Use this callback to listen for interactions
   /// with the loading button
-  final VoidCallback onSubmit;
+  final VoidCallback? onSubmit;
 
   /// The child widget for the loading button
   final Widget child;
@@ -33,17 +33,15 @@ class LoadingButton extends StatefulWidget {
   /// if given a [LoadingButtonController], this widget can use the [moveToScreen]
   /// to animate a transition to a new page
   LoadingButton({
-    Key key,
+    Key? key,
     this.color,
     this.duration = const Duration(milliseconds: 300),
     this.transitionDuration = const Duration(milliseconds: 400),
     this.onSubmit,
-    this.controller,
-    this.child,
+    required this.controller,
+    required this.child,
     this.errorColor,
-  })  : assert(duration != null),
-        assert(duration.inMilliseconds > 0),
-        assert(child != null),
+  })  : assert(duration.inMilliseconds > 0),
         super(key: key);
 
   @override
@@ -52,10 +50,10 @@ class LoadingButton extends StatefulWidget {
 
 class _LoadginButtonState extends State<LoadingButton>
     with TickerProviderStateMixin, RouteAware {
-  AnimationController _controller;
+  late AnimationController _controller;
 
   /// if null, it will use the accent color by default
-  Color _buttonColor;
+  Color? _buttonColor;
   bool _isLoading = false;
   bool _isError = false;
   bool _isReversed = false;
@@ -64,18 +62,19 @@ class _LoadginButtonState extends State<LoadingButton>
   // Transition
   GlobalKey _buttonKey = GlobalKey();
 
-  final routeObserver = RouteObserver<PageRoute>();
+  final RouteObserver<PageRoute<dynamic>> routeObserver =
+      RouteObserver<PageRoute>();
 
   @override
   void initState() {
-    super.initState();
-
-    widget.controller?._state = this;
+    widget.controller._state = this;
 
     _controller = AnimationController(
       vsync: this,
       duration: widget.duration,
     )..addListener(() => setState(() {}));
+
+    super.initState();
   }
 
   @override
@@ -88,7 +87,7 @@ class _LoadginButtonState extends State<LoadingButton>
     super.didChangeDependencies();
 
     _buttonColor = widget.color ?? Theme.of(context).accentColor;
-    routeObserver.subscribe(this, ModalRoute.of(context));
+    routeObserver.subscribe(this, ModalRoute.of(context) as PageRoute<dynamic>);
 
     Animation startColor = ColorTween(
       begin: widget.color,
@@ -99,6 +98,7 @@ class _LoadginButtonState extends State<LoadingButton>
         curve: Interval(0.0, 0.2),
       ),
     );
+
     startColor.addListener(() {
       _buttonColor = startColor.value;
     });
@@ -112,6 +112,7 @@ class _LoadginButtonState extends State<LoadingButton>
         curve: Interval(0.8, 1.0),
       ),
     );
+
     endColor.addListener(() {
       _buttonColor = endColor.value;
     });
@@ -119,7 +120,7 @@ class _LoadginButtonState extends State<LoadingButton>
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _controller.dispose();
     routeObserver.unsubscribe(this);
 
     super.dispose();
@@ -127,7 +128,7 @@ class _LoadginButtonState extends State<LoadingButton>
 
   // Shake animation
   v.Vector3 _getTranslation() {
-    var progress = _controller?.value ?? 0;
+    var progress = _controller.value;
     var offset = sin(progress * pi * 5);
 
     offset *= 12;
@@ -187,7 +188,7 @@ class _LoadginButtonState extends State<LoadingButton>
               child: _getChildWidget(context),
             ),
           ),
-          builder: (BuildContext context, double size, Widget child) {
+          builder: (BuildContext context, double size, Widget? child) {
             return Container(
               height: constraints.maxHeight,
               width: size,
@@ -208,7 +209,7 @@ class _LoadginButtonState extends State<LoadingButton>
 
   /// Calls [onSubmit] callback and inits the animation
   void _submitAndAnimate() {
-    widget.onSubmit();
+    widget.onSubmit?.call();
     _iniAnimation();
   }
 
@@ -265,7 +266,7 @@ class _LoadginButtonState extends State<LoadingButton>
     final size = sizeTween.evaluate(easeInAnimation);
 
     Widget positionedClippedChild(Widget child) => Positioned(
-          width: size.width,
+          width: size!.width,
           height: size.height,
           left: offset.dx,
           top: offset.dy,
@@ -282,32 +283,40 @@ class _LoadginButtonState extends State<LoadingButton>
     );
   }
 
-  _moveToNextPage(BuildContext context, Widget page) {
+  _moveToNextPage({
+    required BuildContext context,
+    required Widget page,
+    bool stopAnimation = false,
+    required NavigationCallback callback,
+  }) {
     final RenderBox buttonRenderBox =
-        _buttonKey.currentContext.findRenderObject();
+        _buttonKey.currentContext!.findRenderObject() as RenderBox;
     final buttonSize = buttonRenderBox.size;
     final buttonOffset = buttonRenderBox.localToGlobal(Offset.zero);
 
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        transitionDuration: widget.transitionDuration,
-        pageBuilder: (BuildContext context, Animation<double> animation,
-                Animation<double> secondaryAnimation) =>
-            page,
-        transitionsBuilder: (BuildContext context, Animation<double> animation,
-                Animation<double> secondaryAnimation, Widget child) =>
-            _buildTransition(
-                context, child, animation, buttonSize, buttonOffset),
-      ),
+    final pageBuilder = PageRouteBuilder(
+      transitionDuration: widget.transitionDuration,
+      pageBuilder: (BuildContext context, Animation<double> animation,
+              Animation<double> secondaryAnimation) =>
+          page,
+      transitionsBuilder: (BuildContext context, Animation<double> animation,
+              Animation<double> secondaryAnimation, Widget child) =>
+          _buildTransition(context, child, animation, buttonSize, buttonOffset),
     );
+
+    callback(pageBuilder);
+
+    if (stopAnimation) _stopAnimation();
   }
 }
+
+typedef NavigationCallback = Function(PageRouteBuilder);
 
 /// This controller defines a set of helper methods
 /// that notifies the loading button about the state of the
 /// animation
 class LoadingButtonController {
-  _LoadginButtonState _state;
+  late _LoadginButtonState _state;
 
   /// Stops the loading animation and init the error state
   void onError() {
@@ -328,7 +337,22 @@ class LoadingButtonController {
   }
 
   /// Inits the transition to the next page
-  void moveToScreen({@required BuildContext context, @required Widget page}) {
-    _state._moveToNextPage(context, page);
+  /// Please provide the next [page] that you want to present to the user.
+  /// If you want to stop the button animation once the [page] is presented,
+  /// you can set [stopAnimation] as true.
+  /// Finally, provide a [navigationCallback] that will let you set the navigation
+  /// behavior, this callback will return the new route.
+  void moveToScreen({
+    required BuildContext context,
+    required Widget page,
+    required stopAnimation,
+    required NavigationCallback navigationCallback,
+  }) {
+    _state._moveToNextPage(
+      context: context,
+      page: page,
+      stopAnimation: stopAnimation,
+      callback: navigationCallback,
+    );
   }
 }
