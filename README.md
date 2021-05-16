@@ -1,8 +1,8 @@
 # Loading Transition button
 
-![](https://badges.fyi/github/latest-tag/AndresR173/countdown_progress_indicator)
-![](https://badges.fyi/github/stars/AndresR173/countdown_progress_indicator)
-![](https://badges.fyi/github/license/AndresR173/countdown_progress_indicator)
+![](https://badges.fyi/github/latest-tag/AndresR173/loading_transition_button)
+![](https://badges.fyi/github/stars/AndresR173/loading_transition_button)
+![](https://badges.fyi/github/license/AndresR173/loading_transition_button)
 
 A Customizable transition button for Flutter
 
